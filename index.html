@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>통다 선적서류 → 엑셀 변환</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      color: #2d3748;
+    }
+
+    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 6px; color: #1a365d; }
+    .subtitle { font-size: 0.9rem; color: #718096; margin-bottom: 36px; }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 40px;
+      width: 100%;
+      max-width: 700px;
+    }
+
+    .drop-zone {
+      border: 2px dashed #cbd5e0;
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #f7fafc;
+      position: relative;
+    }
+    .drop-zone:hover, .drop-zone.over { border-color: #3182ce; background: #ebf8ff; }
+    .drop-zone input[type="file"] {
+      position: absolute; inset: 0; opacity: 0; cursor: pointer; width: 100%; height: 100%;
+    }
+    .drop-icon { font-size: 3rem; margin-bottom: 12px; }
+    .drop-text { font-size: 1rem; color: #4a5568; font-weight: 600; }
+    .drop-sub { font-size: 0.82rem; color: #a0aec0; margin-top: 6px; }
+
+    .file-info {
+      display: none; align-items: center; gap: 12px;
+      background: #ebf8ff; border: 1px solid #bee3f8;
+      border-radius: 8px; padding: 12px 16px; margin-top: 16px;
+    }
+    .file-info.show { display: flex; }
+    .file-icon { font-size: 1.6rem; }
+    .file-name { font-size: 0.9rem; font-weight: 600; color: #2c5282; word-break: break-all; }
+    .file-size { font-size: 0.78rem; color: #718096; }
+
+    .btn {
+      display: block; width: 100%; padding: 14px; margin-top: 20px;
+      background: #2b6cb0; color: #fff; border: none; border-radius: 10px;
+      font-size: 1rem; font-weight: 700; cursor: pointer; transition: background 0.2s;
+      font-family: inherit;
+    }
+    .btn:hover:not(:disabled) { background: #2c5282; }
+    .btn:disabled { background: #a0aec0; cursor: not-allowed; }
+
+    .status {
+      margin-top: 20px; padding: 14px 18px; border-radius: 8px;
+      font-size: 0.88rem; display: none;
+    }
+    .status.show { display: block; }
+    .status.loading { background: #ebf8ff; color: #2c5282; border: 1px solid #bee3f8; }
+    .status.success { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+    .status.error   { background: #fff5f5; color: #c53030; border: 1px solid #fed7d7; }
+
+    .spinner {
+      display: inline-block; width: 14px; height: 14px;
+      border: 2px solid #bee3f8; border-top-color: #2b6cb0;
+      border-radius: 50%; animation: spin 0.8s linear infinite;
+      margin-right: 8px; vertical-align: middle;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .preview-wrap { margin-top: 28px; display: none; }
+    .preview-wrap.show { display: block; }
+    .preview-wrap h3 { font-size: 0.9rem; color: #4a5568; margin-bottom: 10px; }
+
+    .table-scroll { overflow-x: auto; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.78rem; min-width: 560px; }
+    th { background: #2b6cb0; color: #fff; padding: 7px 10px; text-align: left; white-space: nowrap; }
+    td { padding: 6px 10px; border-bottom: 1px solid #e2e8f0; white-space: nowrap; }
+    tr:nth-child(even) td { background: #f7fafc; }
+    .badge {
+      display: inline-block; background: #ebf8ff; color: #2c5282;
+      border-radius: 4px; padding: 2px 6px; font-size: 0.74rem; font-weight: 600;
+    }
+    .num { text-align: right; }
+  </style>
+</head>
+<body>
+  <h1>📦 선적서류 엑셀 변환</h1>
+  <p class="subtitle">통다글로벌 PDF (B/L · Invoice · Packing List) → 엑셀 자동 추출</p>
+
+  <div class="card">
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".pdf">
+      <div class="drop-icon">📄</div>
+      <div class="drop-text">PDF 파일을 여기에 드래그하거나 클릭하여 선택</div>
+      <div class="drop-sub">파일이 서버로 전송되지 않고 브라우저에서만 처리됩니다 · PDF만 지원</div>
+    </div>
+
+    <div class="file-info" id="fileInfo">
+      <div class="file-icon">📄</div>
+      <div>
+        <div class="file-name" id="fileName"></div>
+        <div class="file-size" id="fileSize"></div>
+      </div>
+    </div>
+
+    <button class="btn" id="convertBtn" disabled>엑셀 변환 다운로드</button>
+    <div class="status" id="status"></div>
+
+    <div class="preview-wrap" id="previewWrap">
+      <h3>추출된 데이터 미리보기</h3>
+      <div class="table-scroll">
+        <table>
+          <thead>
+            <tr>
+              <th>화주명</th><th>H.B/L</th><th>Shipper</th>
+              <th>품목 (규격1)</th><th>수량</th><th>단가</th><th>금액</th>
+            </tr>
+          </thead>
+          <tbody id="previewBody"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    pdfjsLib.GlobalWorkerOptions.workerSrc =
+      'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+
+    // ── DOM refs ──────────────────────────────────────────────────────────────
+    const dropZone   = document.getElementById('dropZone');
+    const fileInput  = document.getElementById('fileInput');
+    const fileInfo   = document.getElementById('fileInfo');
+    const fileNameEl = document.getElementById('fileName');
+    const fileSizeEl = document.getElementById('fileSize');
+    const convertBtn = document.getElementById('convertBtn');
+    const statusEl   = document.getElementById('status');
+    const previewWrap= document.getElementById('previewWrap');
+    const previewBody= document.getElementById('previewBody');
+
+    let selectedFile = null;
+    let parsedShipments = null;
+
+    // ── Drag & drop ───────────────────────────────────────────────────────────
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('over');
+      const f = e.dataTransfer.files[0];
+      if (f) handleFile(f);
+    });
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) handleFile(fileInput.files[0]);
+    });
+
+    function fmtSize(b) {
+      if (b < 1024) return b + ' B';
+      if (b < 1048576) return (b/1024).toFixed(1) + ' KB';
+      return (b/1048576).toFixed(1) + ' MB';
+    }
+
+    function showStatus(msg, type) {
+      statusEl.innerHTML = (type === 'loading' ? '<span class="spinner"></span>' : '') + msg;
+      statusEl.className = 'status show ' + type;
+    }
+
+    async function handleFile(f) {
+      if (!f.name.toLowerCase().endsWith('.pdf')) {
+        showStatus('PDF 파일만 지원합니다.', 'error'); return;
+      }
+      selectedFile = f;
+      parsedShipments = null;
+      fileNameEl.textContent = f.name;
+      fileSizeEl.textContent = fmtSize(f.size);
+      fileInfo.classList.add('show');
+      convertBtn.disabled = true;
+      previewWrap.classList.remove('show');
+      previewBody.innerHTML = '';
+      showStatus('PDF 분석 중...', 'loading');
+
+      try {
+        const buf = await f.arrayBuffer();
+        parsedShipments = await parsePDF(buf);
+        if (!parsedShipments.length) {
+          showStatus('선적 데이터를 찾을 수 없습니다. PDF 형식을 확인해주세요.', 'error');
+          return;
+        }
+        renderPreview(parsedShipments);
+        const totalItems = parsedShipments.reduce((a, s) => a + s.items.length, 0);
+        showStatus(`✅ ${parsedShipments.length}건 화주 · ${totalItems}개 품목 추출 완료`, 'success');
+        convertBtn.disabled = false;
+      } catch (e) {
+        showStatus('오류: ' + e.message, 'error');
+        console.error(e);
+      }
+    }
+
+    convertBtn.addEventListener('click', () => {
+      if (!parsedShipments) return;
+      const wb = generateExcel(parsedShipments);
+      const baseName = selectedFile.name.replace(/\.pdf$/i, '');
+      XLSX.writeFile(wb, baseName + '_추출.xlsx');
+      showStatus('✅ 엑셀 파일 다운로드 완료!', 'success');
+    });
+
+    // ── Preview ───────────────────────────────────────────────────────────────
+    function renderPreview(shipments) {
+      previewBody.innerHTML = '';
+      for (const s of shipments) {
+        s.items.forEach((item, idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${idx === 0 ? escHtml(s.consignee) : ''}</td>
+            <td>${idx === 0 ? '<span class="badge">' + escHtml(s.hbl) + '</span>' : ''}</td>
+            <td>${idx === 0 ? escHtml(s.shipper) : ''}</td>
+            <td>${escHtml(item.description)}</td>
+            <td class="num">${item.qty.toLocaleString()}</td>
+            <td class="num">${item.unitPrice ? item.unitPrice.toFixed(2) : '-'}</td>
+            <td class="num">${item.amount.toFixed(2)}</td>`;
+          previewBody.appendChild(tr);
+        });
+      }
+      previewWrap.classList.add('show');
+    }
+
+    function escHtml(s) {
+      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    // ── PDF parsing (browser, pdf.js) ─────────────────────────────────────────
+    async function parsePDF(arrayBuffer) {
+      const pdf = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+      const pageTexts = [];
+
+      for (let p = 1; p <= pdf.numPages; p++) {
+        const page = await pdf.getPage(p);
+        const content = await page.getTextContent();
+
+        // Group by Y coordinate (rounded) → sort by X → join
+        const byY = {};
+        for (const item of content.items) {
+          const y = Math.round(item.transform[5]);
+          if (!byY[y]) byY[y] = [];
+          byY[y].push({ x: item.transform[4], str: item.str });
+        }
+        const ys = Object.keys(byY).map(Number).sort((a, b) => b - a);
+        const lines = ys
+          .map(y => byY[y].sort((a, b) => a.x - b.x).map(i => i.str).join(' ').trim())
+          .filter(l => l);
+        pageTexts.push(lines.join('\n'));
+      }
+
+      return buildShipments(pageTexts);
+    }
+
+    const isBL      = t => /H\.B\/L\s*:/.test(t) && !isInvoice(t) && !isPL(t);
+    const isInvoice = t => t.includes('COMMERCIAL INVOICE');
+    const isPL      = t => t.includes('PACKING LIST') && !isInvoice(t);
+
+    function buildShipments(pages) {
+      const shipments = [];
+      let i = 0;
+
+      while (i < pages.length) {
+        if (isBL(pages[i])) {
+          const bl = parseBL(pages[i]);
+          i++;
+
+          let invoiceText = '';
+          while (i < pages.length && !isBL(pages[i])) {
+            const p = pages[i];
+            if (isInvoice(p)) {
+              invoiceText = p;
+            } else if (invoiceText && !isPL(p)) {
+              invoiceText += '\n' + p;
+            }
+            i++;
+          }
+
+          const items = parseInvoiceItems(invoiceText);
+          shipments.push({
+            hbl: bl.hbl,
+            consignee: bl.consignee,
+            shipper: bl.shipper,
+            grossWeight: bl.grossWeight,
+            totalQty: bl.totalQty,
+            items: items.length > 0 ? items : parseBLItems(pages[i - (invoiceText ? 0 : 1)] || '')
+          });
+        } else {
+          i++;
+        }
+      }
+
+      return shipments.filter(s => s.hbl && s.items.length > 0);
+    }
+
+    function parseBL(text) {
+      const hbl = (text.match(/H\.B\/L\s*:\s*(\S+)/) || [])[1] || '';
+
+      const consigneeM = text.match(/Consignee\s+\d{4}-\d{2}-\d{2}\s+\d{4}-\d{2}-\d{2}\s*\n([^\n]+)/);
+      const consignee  = consigneeM ? consigneeM[1].trim() : '';
+
+      const shipperM = text.match(/M\.B\/L\s*:\s*\n\s*([A-Z][A-Z0-9]+)/);
+      const shipper  = shipperM ? shipperM[1].trim() : 'TONDA';
+
+      const telM      = text.match(/Tel\s*:\s*[\d\-]+\s+(\d+)\s+([\d.]+)/);
+      const grossWeight = telM ? parseFloat(telM[2]) : 0;
+
+      const totalM  = text.match(/Total\s+(\d[\d,]*)\s+[\d,.]+/);
+      const totalQty = totalM ? parseInt(totalM[1].replace(',', '')) : 0;
+
+      return { hbl, consignee, shipper, grossWeight, totalQty };
+    }
+
+    function parseBLItems(text) {
+      const startM = text.match(/Description\s+QTY\s+Value/);
+      const endM   = text.match(/\nTotal\s+\d/);
+      if (!startM || !endM) return [];
+
+      const section = text.slice(startM.index + startM[0].length, endM.index);
+      const items = [];
+
+      for (const line of section.split('\n')) {
+        const m = line.match(/^([A-Z][A-Z\s\-]+?)\s{2,}(\d+)\s+([\d,.]+)\s*$/);
+        if (m) {
+          const desc = m[1].trim();
+          if (!/FLOOR|ROAD|LOGISTICS|CHUKHANG|JUNG-GU|BIKENZ|DANSHUN|TAICHENG/i.test(desc)) {
+            items.push({ description: desc, qty: parseInt(m[2]), unitPrice: 0, amount: parseFloat(m[3].replace(',', '')) });
+          }
+        }
+      }
+      return items;
+    }
+
+    function parseInvoiceItems(text) {
+      if (!text) return [];
+      const items = [];
+      const regex = /^(\d{2})\s+([A-Z][A-Z\s\-]+?)\s+(\d+)\s+([\d.]+)\s+([\d,.]+)\s*$/gm;
+      let m;
+      while ((m = regex.exec(text)) !== null) {
+        items.push({
+          description: m[2].trim(),
+          qty:         parseInt(m[3]),
+          unitPrice:   parseFloat(m[4]),
+          amount:      parseFloat(m[5].replace(',', ''))
+        });
+      }
+      return items;
+    }
+
+    // ── Excel generation (SheetJS) ────────────────────────────────────────────
+    function generateExcel(shipments) {
+      const headers = [
+        '납세자','화주명','수입자통관고유부호','비엘번호','해외거래처상호',
+        '세번부호','세율구분','규격1','규격2','규격3','가공공정','성분1',
+        '수량','수량\r\n단위','단가','금액','순중량','FILE 1',
+        '총수량','총중량','총순중량',''
+      ];
+
+      const rows = [headers];
+      for (const s of shipments) {
+        s.items.forEach((item, idx) => {
+          rows.push([
+            '', s.consignee, '', s.hbl, s.shipper,
+            '', '', item.description, '', '', '', '',
+            item.qty, 'PC', item.unitPrice || '', item.amount,
+            '', '',
+            idx === 0 ? (s.totalQty || '') : '',
+            idx === 0 ? (s.grossWeight || '') : '',
+            '', ''
+          ]);
+        });
+      }
+
+      const ws = XLSX.utils.aoa_to_sheet(rows);
+      ws['!cols'] = [
+        {wch:12},{wch:22},{wch:18},{wch:14},{wch:26},
+        {wch:14},{wch:10},{wch:32},{wch:12},{wch:12},
+        {wch:12},{wch:15},{wch:8},{wch:6},{wch:8},
+        {wch:10},{wch:10},{wch:8},{wch:8},{wch:10},
+        {wch:10},{wch:6}
+      ];
+
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, '입력값');
+      return wb;
+    }
+  </script>
+</body>
+</html>
