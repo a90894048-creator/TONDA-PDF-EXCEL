@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>통다 선적서류 → 엑셀 변환</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', sans-serif;
+      background: #f0f4f8;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 40px 20px;
+      color: #2d3748;
+    }
+
+    h1 {
+      font-size: 1.6rem;
+      font-weight: 700;
+      margin-bottom: 6px;
+      color: #1a365d;
+    }
+
+    .subtitle {
+      font-size: 0.9rem;
+      color: #718096;
+      margin-bottom: 36px;
+    }
+
+    .card {
+      background: #fff;
+      border-radius: 16px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      padding: 40px;
+      width: 100%;
+      max-width: 560px;
+    }
+
+    .drop-zone {
+      border: 2px dashed #cbd5e0;
+      border-radius: 12px;
+      padding: 48px 24px;
+      text-align: center;
+      cursor: pointer;
+      transition: all 0.2s;
+      background: #f7fafc;
+      position: relative;
+    }
+
+    .drop-zone:hover, .drop-zone.over {
+      border-color: #3182ce;
+      background: #ebf8ff;
+    }
+
+    .drop-zone input[type="file"] {
+      position: absolute;
+      inset: 0;
+      opacity: 0;
+      cursor: pointer;
+      width: 100%;
+      height: 100%;
+    }
+
+    .drop-icon {
+      font-size: 3rem;
+      margin-bottom: 12px;
+    }
+
+    .drop-text {
+      font-size: 1rem;
+      color: #4a5568;
+      font-weight: 600;
+    }
+
+    .drop-sub {
+      font-size: 0.82rem;
+      color: #a0aec0;
+      margin-top: 6px;
+    }
+
+    .file-info {
+      display: none;
+      align-items: center;
+      gap: 12px;
+      background: #ebf8ff;
+      border: 1px solid #bee3f8;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-top: 16px;
+    }
+
+    .file-info.show { display: flex; }
+
+    .file-icon { font-size: 1.6rem; }
+
+    .file-name {
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: #2c5282;
+      word-break: break-all;
+    }
+
+    .file-size {
+      font-size: 0.78rem;
+      color: #718096;
+    }
+
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 14px;
+      margin-top: 20px;
+      background: #2b6cb0;
+      color: #fff;
+      border: none;
+      border-radius: 10px;
+      font-size: 1rem;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+      font-family: inherit;
+    }
+
+    .btn:hover:not(:disabled) { background: #2c5282; }
+    .btn:disabled { background: #a0aec0; cursor: not-allowed; }
+
+    .status {
+      margin-top: 20px;
+      padding: 14px 18px;
+      border-radius: 8px;
+      font-size: 0.88rem;
+      display: none;
+    }
+
+    .status.show { display: block; }
+    .status.loading { background: #ebf8ff; color: #2c5282; border: 1px solid #bee3f8; }
+    .status.success { background: #f0fff4; color: #276749; border: 1px solid #9ae6b4; }
+    .status.error   { background: #fff5f5; color: #c53030; border: 1px solid #fed7d7; }
+
+    .spinner {
+      display: inline-block;
+      width: 14px; height: 14px;
+      border: 2px solid #bee3f8;
+      border-top-color: #2b6cb0;
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+      margin-right: 8px;
+      vertical-align: middle;
+    }
+
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    .preview-table-wrap {
+      margin-top: 24px;
+      overflow-x: auto;
+      display: none;
+    }
+
+    .preview-table-wrap.show { display: block; }
+
+    .preview-table-wrap h3 {
+      font-size: 0.9rem;
+      color: #4a5568;
+      margin-bottom: 10px;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 0.78rem;
+    }
+
+    th {
+      background: #2b6cb0;
+      color: #fff;
+      padding: 7px 10px;
+      text-align: left;
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #e2e8f0;
+      white-space: nowrap;
+    }
+
+    tr:nth-child(even) td { background: #f7fafc; }
+
+    .badge {
+      display: inline-block;
+      background: #ebf8ff;
+      color: #2c5282;
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-size: 0.74rem;
+      font-weight: 600;
+    }
+  </style>
+</head>
+<body>
+  <h1>📦 선적서류 엑셀 변환</h1>
+  <p class="subtitle">통다글로벌 PDF (B/L · Invoice · Packing List) → 엑셀 자동 추출</p>
+
+  <div class="card">
+    <div class="drop-zone" id="dropZone">
+      <input type="file" id="fileInput" accept=".pdf">
+      <div class="drop-icon">📄</div>
+      <div class="drop-text">PDF 파일을 여기에 드래그하거나 클릭하여 선택</div>
+      <div class="drop-sub">최대 50MB · PDF 파일만 지원</div>
+    </div>
+
+    <div class="file-info" id="fileInfo">
+      <div class="file-icon">📄</div>
+      <div>
+        <div class="file-name" id="fileName"></div>
+        <div class="file-size" id="fileSize"></div>
+      </div>
+    </div>
+
+    <button class="btn" id="convertBtn" disabled>엑셀 변환 다운로드</button>
+
+    <div class="status" id="status"></div>
+
+    <div class="preview-table-wrap" id="previewWrap">
+      <h3>추출된 데이터 미리보기</h3>
+      <table id="previewTable">
+        <thead>
+          <tr>
+            <th>화주명</th>
+            <th>H.B/L</th>
+            <th>Shipper</th>
+            <th>품목</th>
+            <th>수량</th>
+            <th>단가</th>
+            <th>금액</th>
+          </tr>
+        </thead>
+        <tbody id="previewBody"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <script>
+    const dropZone = document.getElementById('dropZone');
+    const fileInput = document.getElementById('fileInput');
+    const fileInfo = document.getElementById('fileInfo');
+    const fileName = document.getElementById('fileName');
+    const fileSize = document.getElementById('fileSize');
+    const convertBtn = document.getElementById('convertBtn');
+    const statusEl = document.getElementById('status');
+    const previewWrap = document.getElementById('previewWrap');
+    const previewBody = document.getElementById('previewBody');
+
+    let selectedFile = null;
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault();
+      dropZone.classList.remove('over');
+      const f = e.dataTransfer.files[0];
+      if (f) setFile(f);
+    });
+
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) setFile(fileInput.files[0]);
+    });
+
+    function setFile(f) {
+      if (!f.name.toLowerCase().endsWith('.pdf')) {
+        showStatus('PDF 파일만 지원합니다.', 'error');
+        return;
+      }
+      selectedFile = f;
+      fileName.textContent = f.name;
+      fileSize.textContent = formatSize(f.size);
+      fileInfo.classList.add('show');
+      convertBtn.disabled = false;
+      hideStatus();
+      previewWrap.classList.remove('show');
+      previewBody.innerHTML = '';
+    }
+
+    function formatSize(bytes) {
+      if (bytes < 1024) return bytes + ' B';
+      if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
+      return (bytes / 1024 / 1024).toFixed(1) + ' MB';
+    }
+
+    function showStatus(msg, type) {
+      statusEl.innerHTML = (type === 'loading' ? '<span class="spinner"></span>' : '') + msg;
+      statusEl.className = 'status show ' + type;
+    }
+
+    function hideStatus() {
+      statusEl.className = 'status';
+    }
+
+    // Preview on file select
+    fileInput.addEventListener('change', () => {
+      if (fileInput.files[0]) {
+        setFile(fileInput.files[0]);
+        loadPreview(fileInput.files[0]);
+      }
+    });
+
+    dropZone.addEventListener('drop', e => {
+      if (e.dataTransfer.files[0]) loadPreview(e.dataTransfer.files[0]);
+    });
+
+    async function loadPreview(f) {
+      showStatus('데이터 분석 중...', 'loading');
+      const fd = new FormData();
+      fd.append('pdf', f);
+      try {
+        const res = await fetch('/preview', { method: 'POST', body: fd });
+        const data = await res.json();
+        if (data.error) { showStatus(data.error, 'error'); return; }
+        renderPreview(data.shipments);
+        showStatus(`✅ ${data.shipments.length}건 화주 · ${data.shipments.reduce((a,s)=>a+s.items.length,0)}개 품목 추출 완료`, 'success');
+      } catch (e) {
+        showStatus('미리보기 오류: ' + e.message, 'error');
+      }
+    }
+
+    function renderPreview(shipments) {
+      previewBody.innerHTML = '';
+      for (const s of shipments) {
+        s.items.forEach((item, idx) => {
+          const tr = document.createElement('tr');
+          tr.innerHTML = `
+            <td>${idx === 0 ? s.consignee : ''}</td>
+            <td>${idx === 0 ? '<span class="badge">' + s.hbl + '</span>' : ''}</td>
+            <td>${idx === 0 ? s.shipper : ''}</td>
+            <td>${item.description}</td>
+            <td style="text-align:right">${item.qty.toLocaleString()}</td>
+            <td style="text-align:right">${item.unitPrice ? item.unitPrice.toFixed(2) : '-'}</td>
+            <td style="text-align:right">${item.amount.toFixed(2)}</td>
+          `;
+          previewBody.appendChild(tr);
+        });
+      }
+      previewWrap.classList.add('show');
+    }
+
+    convertBtn.addEventListener('click', async () => {
+      if (!selectedFile) return;
+      convertBtn.disabled = true;
+      showStatus('엑셀 파일 생성 중...', 'loading');
+
+      const fd = new FormData();
+      fd.append('pdf', selectedFile);
+
+      try {
+        const res = await fetch('/extract', { method: 'POST', body: fd });
+        if (!res.ok) {
+          const err = await res.json();
+          showStatus(err.error || '오류가 발생했습니다.', 'error');
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const cd = res.headers.get('Content-Disposition') || '';
+        const nameMatch = cd.match(/filename\*=UTF-8''(.+)/);
+        a.download = nameMatch ? decodeURIComponent(nameMatch[1]) : '선적서류_추출.xlsx';
+        a.href = url;
+        a.click();
+        URL.revokeObjectURL(url);
+        showStatus('✅ 엑셀 파일 다운로드 완료!', 'success');
+      } catch (e) {
+        showStatus('오류: ' + e.message, 'error');
+      } finally {
+        convertBtn.disabled = false;
+      }
+    });
+  </script>
+</body>
+</html>
