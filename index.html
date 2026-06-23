@@ -369,7 +369,7 @@
     // ── Excel generation (SheetJS) ────────────────────────────────────────────
     function generateExcel(shipments) {
       const headers = [
-        '납세자','화주명','수입자통관고유부호','비엘번호','해외거래처상호',
+        '납세자','수입자통관고유부호','화주명','비엘번호','해외거래처상호',
         '세번부호','세율구분','규격1','규격2','규격3','가공공정','성분1',
         '수량','수량\r\n단위','단가','금액','순중량','FILE 1',
         '총수량','총중량','총순중량',''
@@ -379,7 +379,7 @@
       for (const s of shipments) {
         s.items.forEach((item, idx) => {
           rows.push([
-            '', s.consignee, '', s.hbl, s.shipper,
+            '', '', s.consignee, s.hbl, s.shipper,
             '', '', item.description, '', '', '', '',
             item.qty, 'PC', item.unitPrice || '', item.amount,
             '', '',
